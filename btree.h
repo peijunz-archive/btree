@@ -24,14 +24,17 @@ struct node {
     bool full() const{
         return fill == m-1;
     }
+    bool empty() const{
+        return fill == 0;
+    }
     bool overflowed() const{
         return fill >= m;
     }
-    T* begin(){
-        return children;
+    bool underflowed() const{
+        return fill < (m-1)/2;
     }
-    T* end(){
-        return children + fill;
+    bool superfluous() const{
+        return fill > (m-1)/2;
     }
 
     void insert_sep(T val, int pos){
@@ -40,6 +43,19 @@ struct node {
         }
         sep[pos] = val;
         fill++;
+    }
+
+    void erase_sep(int pos){
+        for (int i = pos+1; i<fill; i++){
+            sep[i-1] = sep[i];
+        }
+        fill--;
+    }
+    void erase_child(int pos){
+        // Must be called before erasion of separator
+        for (int i = pos+1; i<fill+1; i++){
+            children[i-1] = children[i];
+        }
     }
     void insert_child(node *val, int pos){
         //Must be called after insertion of separator
@@ -81,14 +97,19 @@ ostream& operator<< (ostream &os, const node<T, m> * n){
     return os;
 }
 
+template<typename T, int m>
+void merge_nodes(node<T, m>* lhs, node<T, m>* rhs, T val){
+    lhs->sep[lhs->fill] = val;
+    copy(rhs->sep, rhs->sep+rhs->fill, lhs->sep+lhs->fill+1);
+    copy(rhs->children, rhs->children+rhs->fill+1, lhs->children+lhs->fill+1);
+    lhs->fill += rhs->fill + 1;
+    delete rhs;
+}
+
 template <typename T, int m>
-struct btree{
+class btree{
+public:
     using node_t = node<T, m>;
-    node_t *root = nullptr;
-    int _size = 0;
-    int _depth = 0;
-    btree(){
-    }
     int size() const{return _size;}
     int depth() const{return _depth;}
 
@@ -98,9 +119,6 @@ struct btree{
         copy(n->sep+m-m/2, n->sep+m, rhs->sep);
         n->fill = m - m/2 - 1;
         rhs->fill = m/2;
-
-//        cout<<n<<endl;
-//        cout<<rhs<<endl;
         return rhs;
     }
 
@@ -173,20 +191,84 @@ struct btree{
             }
         }
     }
-    bool erase_from(node_t *n, T val){
-        T* p = lower_bound(n->sep, n->sep+n->fill, val);
-        if (*p == val){
-            //delete_max()
+    void underflow(node_t *n, int pos){
+        node_t *self = n->children[pos];
+        cout<<"Underflow handling "<<n<<endl;
+        if (pos>0 && n->children[pos-1]->superfluous()){
+            cout<<"Left rotation "<<endl;
+            node_t * sibling = n->children[pos-1];
+            // Rotate from left sibling
+            self->insert_sep(n->sep[pos-1], 0);
+            self->insert_child(sibling->children[sibling->fill], 0);
+            n->sep[pos-1] = sibling->sep[sibling->fill-1];
+            sibling->erase_child(sibling->fill);
+            sibling->erase_sep(sibling->fill-1);
+//             sibling->fill--;
+        }
+        else if(pos < n->fill+1  && n->children[pos+1]->superfluous()){
+            // Rotate from right sibling
+            cout<<"Right rotation at "<<pos<<endl;
+            node_t * sibling = n->children[pos+1];
+            self->insert_sep(n->sep[pos], self->fill);
+            self->insert_child(sibling->children[0], self->fill);
+            n->sep[pos] = sibling->sep[0];
+            sibling->erase_child(0);
+            sibling->erase_sep(0);
         }
         else{
-
+            // Merge with a sibling
+            cout<<"Merging"<<endl;
+            bool left_merge = (pos > 0);
+            int mid = pos-left_merge, lhs = pos-left_merge, rhs = pos+1-left_merge;
+            merge_nodes(n->children[lhs], n->children[rhs], n->sep[mid]);
+            n->erase_child(mid+1);
+            n->erase_sep(mid);
         }
-        return false;
+    }
+    void sep_by_max(node_t *n, T *p){
+        cout<<"Separate by max from "<<n<<endl;
+        if (n->is_leaf()){
+            *p = n->sep[n->fill-1];
+            cout<<"New separator found: "<<*p<<endl;
+            n->fill--;
+        }
+        else{
+            node_t *last_child = n->children[n->fill];
+            sep_by_max(last_child, p);
+            if (last_child->underflowed()){
+                cout<<"Last child underflowed for "<<n<<endl;
+                underflow(n, n->fill);
+            }
+        }
+    }
+    void erase_from(node_t *n, T val){
+        T* p = lower_bound(n->sep, n->sep+n->fill, val);
+        int i = p - n->sep;
+        cout<<"Erase "<<val<<" from "<<n<<" found "<<i<<endl;
+        if (i!=n->fill && *p == val){
+            if(n->is_leaf()){
+                n->erase_sep(i);
+            }
+            else{
+                sep_by_max(n->children[i], p);
+                if (n->children[i]->underflowed()){
+                    cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
+                    underflow(n, i);
+                }
+            }
+        }
+        else if(!n->is_leaf()){
+            erase_from(n->children[i], val);
+            if (n->children[i]->underflowed()){
+                cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
+                underflow(n, i);
+            }
+        }
     }
     void erase(T val){
         if (root){
-            bool underflow = erase_from(root, val);
-            if (underflow){
+            erase_from(root, val);
+            if (root->empty()){
                 level_down();
             }
         }
@@ -202,6 +284,10 @@ struct btree{
         }
         return os;
     }
+private:
+    node_t *root = nullptr;
+    int _size = 0;
+    int _depth = 0;
 };
 
 #endif
