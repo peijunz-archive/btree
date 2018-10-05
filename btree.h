@@ -7,15 +7,11 @@
 
 using namespace std;
 
-template<typename T, int m>
-struct node;
-
-template<typename T, int m>
-ostream& operator<< (ostream &os, const node<T, m> * n);
-
 template <typename T, int m>
-struct node {
-    node* children[m+1] = {nullptr};
+struct btree_node {
+    static_assert(m > 2, "Order of btree_node should be higher than 2");
+    static_assert(m < 128, "Order of btree_node should be smaller than 128");
+    btree_node* children[m+1] = {nullptr};
     T sep[m-1+1];
     int8_t fill = 0;
     bool is_leaf() const {
@@ -57,7 +53,7 @@ struct node {
             children[i-1] = children[i];
         }
     }
-    void insert_child(node *val, int pos){
+    void insert_child(btree_node *val, int pos){
         //Must be called after insertion of separator
         for (int i = fill; i>pos; i--){
             children[i] = children[i-1];
@@ -65,12 +61,31 @@ struct node {
         children[pos] = val;
     }
 
+    void absorb(btree_node* rhs, T pivot){
+        sep[fill] = pivot;
+        copy(rhs->sep, rhs->sep+rhs->fill, sep+fill+1);
+        copy(rhs->children, rhs->children+rhs->fill+1, children+fill+1);
+        fill += rhs->fill + 1;
+        delete rhs;
+    }
+
     friend ostream&
-    operator<< <>(ostream &os, const node * n);
+    operator<< (ostream &os, const btree_node * n){
+        if (!n->fill){
+            os << "()";
+        }
+        else{
+            os << "(";
+            for (int i=0; i<n->fill; i++)
+                os<<n->sep[i]<<", ";
+            os << "\b\b)";
+        }
+        return os;
+    }
 };
 
 template <typename T, int m>
-void recursive_stream (ostream& os, node<T, m> *n){
+void recursive_stream (ostream& os, btree_node<T, m> *n){
     if (!n->is_leaf()){
         os << n << ":\t";
         for (int i=0; i < n->fill+1; i++){
@@ -83,33 +98,11 @@ void recursive_stream (ostream& os, node<T, m> *n){
     }
 }
 
-template<typename T, int m>
-ostream& operator<< (ostream &os, const node<T, m> * n){
-    if (!n->fill){
-        os << "()";
-    }
-    else{
-        os << "(";
-        for (int i=0; i<n->fill; i++)
-            os<<n->sep[i]<<", ";
-        os << "\b\b)";
-    }
-    return os;
-}
-
-template<typename T, int m>
-void merge_nodes(node<T, m>* lhs, node<T, m>* rhs, T val){
-    lhs->sep[lhs->fill] = val;
-    copy(rhs->sep, rhs->sep+rhs->fill, lhs->sep+lhs->fill+1);
-    copy(rhs->children, rhs->children+rhs->fill+1, lhs->children+lhs->fill+1);
-    lhs->fill += rhs->fill + 1;
-    delete rhs;
-}
 
 template <typename T, int m>
 class btree{
 public:
-    using node_t = node<T, m>;
+    using node_t = btree_node<T, m>;
     int size() const{return _size;}
     int depth() const{return _depth;}
 
@@ -193,9 +186,9 @@ public:
     }
     void underflow(node_t *n, int pos){
         node_t *self = n->children[pos];
-        cout<<"Underflow handling "<<n<<endl;
+//         cout<<"Underflow handling "<<n<<endl;
         if (pos>0 && n->children[pos-1]->superfluous()){
-            cout<<"Left rotation "<<endl;
+//             cout<<"Left rotation "<<endl;
             node_t * sibling = n->children[pos-1];
             // Rotate from left sibling
             self->insert_sep(n->sep[pos-1], 0);
@@ -207,7 +200,7 @@ public:
         }
         else if(pos < n->fill+1  && n->children[pos+1]->superfluous()){
             // Rotate from right sibling
-            cout<<"Right rotation at "<<pos<<endl;
+//             cout<<"Right rotation at "<<pos<<endl;
             node_t * sibling = n->children[pos+1];
             self->insert_sep(n->sep[pos], self->fill);
             self->insert_child(sibling->children[0], self->fill);
@@ -217,26 +210,27 @@ public:
         }
         else{
             // Merge with a sibling
-            cout<<"Merging"<<endl;
+//             cout<<"Merging"<<endl;
             bool left_merge = (pos > 0);
-            int mid = pos-left_merge, lhs = pos-left_merge, rhs = pos+1-left_merge;
-            merge_nodes(n->children[lhs], n->children[rhs], n->sep[mid]);
+            int mid = pos-left_merge;
+            node_t *lhs = n->children[pos-left_merge], *rhs = n->children[pos+1-left_merge];
+            lhs->absorb(rhs, n->sep[mid]);
             n->erase_child(mid+1);
             n->erase_sep(mid);
         }
     }
     void sep_by_max(node_t *n, T *p){
-        cout<<"Separate by max from "<<n<<endl;
+//         cout<<"Separate by max from "<<n<<endl;
         if (n->is_leaf()){
             *p = n->sep[n->fill-1];
-            cout<<"New separator found: "<<*p<<endl;
+//             cout<<"New separator found: "<<*p<<endl;
             n->fill--;
         }
         else{
             node_t *last_child = n->children[n->fill];
             sep_by_max(last_child, p);
             if (last_child->underflowed()){
-                cout<<"Last child underflowed for "<<n<<endl;
+//                 cout<<"Last child underflowed for "<<n<<endl;
                 underflow(n, n->fill);
             }
         }
@@ -244,7 +238,7 @@ public:
     void erase_from(node_t *n, T val){
         T* p = lower_bound(n->sep, n->sep+n->fill, val);
         int i = p - n->sep;
-        cout<<"Erase "<<val<<" from "<<n<<" found "<<i<<endl;
+//         cout<<"Erase "<<val<<" from "<<n<<" found "<<i<<endl;
         if (i!=n->fill && *p == val){
             if(n->is_leaf()){
                 n->erase_sep(i);
@@ -252,7 +246,7 @@ public:
             else{
                 sep_by_max(n->children[i], p);
                 if (n->children[i]->underflowed()){
-                    cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
+//                     cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
                     underflow(n, i);
                 }
             }
@@ -260,7 +254,7 @@ public:
         else if(!n->is_leaf()){
             erase_from(n->children[i], val);
             if (n->children[i]->underflowed()){
-                cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
+//                 cout<<"After erasion: child underflowed for "<<n<<" at "<<i<<endl;
                 underflow(n, i);
             }
         }
