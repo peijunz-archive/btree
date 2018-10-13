@@ -221,38 +221,55 @@ public:
         }
     }
     /**
-     * @brief underflow Underflow handling
+     * @brief left_rotate Resolve underflow children[pos] by getting child from its left sibling
      * @param n current node
-     * @param pos The position of the children that underflowed
+     * @param pos index of child
+     * @return Success or not
      */
-    void underflow(node_t *n, int pos){
+    bool left_rotate(node_t *n, int pos){
         node_t *self = n->children[pos];
         if (pos>0 && n->children[pos-1]->superfluous()){
-            /// Rotate child from left sibling
             node_t * sibling = n->children[pos-1];
             self->insert_key(n->keys[pos-1], 0);
             self->insert_child(sibling->children[sibling->size], 0);
             n->keys[pos-1] = sibling->keys[sibling->size-1];
             sibling->erase_child(sibling->size);
             sibling->erase_key(sibling->size-1);
+            return true;
         }
-        else if(pos < n->size+1  && n->children[pos+1]->superfluous()){
-            /// Rotate child from right sibling
+        return false;
+    }
+
+    /**
+     * @brief right_rotate Resolve underflow children[pos] by getting child from its right sibling
+     * @param n current node
+     * @param pos index of child
+     * @return Success or not
+     */
+    bool right_rotate(node_t *n, int pos){
+        node_t *self = n->children[pos];
+        if(pos < n->size+1  && n->children[pos+1]->superfluous()){
             node_t * sibling = n->children[pos+1];
             self->insert_key(n->keys[pos], self->size);
             self->insert_child(sibling->children[0], self->size);
             n->keys[pos] = sibling->keys[0];
             sibling->erase_child(0);
             sibling->erase_key(0);
+            return true;
         }
-        else{
-            /// Merge with a sibling
-            bool left_merge = (pos > 0);
-            int mid = pos-left_merge;
-            node_t *lhs = n->children[pos-left_merge], *rhs = n->children[pos+1-left_merge];
-            lhs->absorb(rhs, n->keys[mid]);
-            n->erase_child(mid+1);
-            n->erase_key(mid);
+        return false;
+    }
+    void merge_children(node_t *n, int pos){
+        bool left_merge = (pos > 0);
+        int mid = pos-left_merge;
+        node_t *lhs = n->children[pos-left_merge], *rhs = n->children[pos+1-left_merge];
+        lhs->absorb(rhs, n->keys[mid]);
+        n->erase_child(mid+1);
+        n->erase_key(mid);
+    }
+    void rebalance(node_t *n, int i){
+        if (!left_rotate(n, i) && !right_rotate(n, i)){
+            merge_children(n, i);
         }
     }
     /**
@@ -269,7 +286,7 @@ public:
             node_t *last_child = n->children[n->size];
             set_max_key(last_child, key_p);
             if (last_child->underflowed()){
-                underflow(n, n->size);
+                rebalance(n, n->size);
             }
         }
     }
@@ -288,14 +305,14 @@ public:
             else{   ///< For non-leaf, set new key to be max of left child
                 set_max_key(n->children[i], key_p);
                 if (n->children[i]->underflowed()){
-                    underflow(n, i);
+                    rebalance(n, i);
                 }
             }
         }
         else if(!n->is_leaf()){ ///< Not found, search recursively
             erase_from(n->children[i], val);
             if (n->children[i]->underflowed()){
-                underflow(n, i);
+                rebalance(n, i);
             }
         }
     }
