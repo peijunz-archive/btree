@@ -291,18 +291,18 @@ public:
         }
     }
     /**
-     * @brief set_max_key Set key by max key of current node
-     * @param n current node
-     * @param key_p Pointer to key that needs to be reset
+     * @brief extract_separator Set separator by extracting max key of current sub-tree
+     * @param n current tree node
+     * @param sep separator that needs to be overwritten
      */
-    void set_max_key(node_t *n, T *key_p){
+    void extract_separator(node_t *n, T *sep){
         if (n->is_leaf()){ ///< Separator found
-            *key_p = n->keys[n->size-1];
+            *sep = n->keys[n->size-1];
             n->size--;
         }
         else{   ///< Not found, recursively search
             node_t *last_child = n->children[n->size];
-            set_max_key(last_child, key_p);
+            extract_separator(last_child, sep);
             if (last_child->underflowed()){
                 rebalance(n, n->size);
             }
@@ -314,14 +314,14 @@ public:
      * @param val value
      */
     void erase_from(node_t *n, T val){
-        T* key_p = lower_bound(n->keys, n->keys+n->size, val);
-        int i = key_p - n->keys;
-        if (i!=n->size && *key_p == val){///< Found val at current node
+        T* sep = lower_bound(n->keys, n->keys+n->size, val);
+        int i = sep - n->keys;
+        if (i!=n->size && *sep == val){///< Found val at current node
             if(n->is_leaf()){   ///< For leaf node, simply delete
                 n->erase_key(i);
             }
             else{   ///< For non-leaf, set new key to be max of left child
-                set_max_key(n->children[i], key_p);
+                extract_separator(n->children[i], sep);
                 if (n->children[i]->underflowed()){
                     rebalance(n, i);
                 }
