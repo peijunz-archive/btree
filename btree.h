@@ -25,6 +25,17 @@ struct btree_node {
     T keys[D-1+1];      ///< Keys as separators
     btree_node* children[D+1] = {nullptr};  ///< Pointers to child nodes
 
+    ~btree_node(){
+        if (!is_leaf()){
+            for (int i=0; i<size+1; i++){
+                delete children[i];
+            }
+        }
+    }
+    void reset(){
+        children[0] = nullptr;
+        size = 0;
+    }
     int8_t degree() const{
         return size + 1;
     }
@@ -88,6 +99,7 @@ struct btree_node {
         copy(rhs->keys, rhs->keys+rhs->size, keys+size+1);
         copy(rhs->children, rhs->children+rhs->size+1, children+size+1);
         size += rhs->size + 1;
+        rhs->reset();
         delete rhs;
     }
 
@@ -128,6 +140,11 @@ public:
     int size() const{return _size;}
     int depth() const{return _depth;}
 
+    ~btree(){
+        if (root){
+            delete root;
+        }
+    }
     /**
      * @brief spill_leaf Spill keys of overflowed leaf node
      * @param n overflowed node
@@ -174,6 +191,7 @@ public:
     void level_down(){
         node_t * old = root;
         root = root->children[0];
+        old->reset();
         delete old;
         _depth--;
     }
